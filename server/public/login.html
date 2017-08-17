@@ -1,0 +1,48 @@
+<html>
+  <body>
+    <fb:login-button 
+      scope="public_profile,email"
+      onlogin="checkLoginState();">
+    </fb:login-button>
+
+    <div class="fb-messengermessageus" 
+      messenger_app_id="1077072245756527" 
+      page_id="529093437424292"
+      color="blue"
+      size="standard" >
+    </div>
+  </body>
+</html>
+
+<script>
+  window.fbAsyncInit = function() {
+    FB.init({
+      appId      : '1077072245756527',
+      cookie     : true,
+      xfbml      : true,
+      version    : 'v2.8'
+    });
+    FB.AppEvents.logPageView();   
+
+    FB.getLoginStatus(function(response) {
+      statusChangeCallback(response);
+    });
+  };
+
+  (function(d, s, id){
+     var js, fjs = d.getElementsByTagName(s)[0];
+     if (d.getElementById(id)) {return;}
+     js = d.createElement(s); js.id = id;
+     js.src = "//connect.facebook.net/en_US/sdk.js";
+     fjs.parentNode.insertBefore(js, fjs);
+   }(document, 'script', 'facebook-jssdk'));
+
+function statusChangeCallback(res) {
+  console.log(res);
+}
+function checkLoginState() {
+  FB.getLoginStatus(function(response) {
+    statusChangeCallback(response);
+  });
+}
+</script>
