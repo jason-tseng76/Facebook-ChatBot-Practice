@@ -1,48 +1,92 @@
 <html>
+  <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
   <body>
     <fb:login-button 
-      scope="public_profile,email"
+      scope="public_profile,email,read_page_mailboxes,manage_pages"
       onlogin="checkLoginState();">
     </fb:login-button>
 
     <div class="fb-messengermessageus" 
-      messenger_app_id="1077072245756527" 
-      page_id="529093437424292"
+      messenger_app_id="1945705892381778" 
+      page_id="313455628684538"
       color="blue"
       size="standard" >
     </div>
+
+    <div class="fb-send-to-messenger" 
+      messenger_app_id="1945705892381778" 
+      page_id="313455628684538" 
+      data-ref="from_send_to_messenger_btn" 
+      color="blue" 
+      size="standard">
+    </div>
   </body>
-</html>
-
 <script>
-  window.fbAsyncInit = function() {
-    FB.init({
-      appId      : '1077072245756527',
-      cookie     : true,
-      xfbml      : true,
-      version    : 'v2.8'
-    });
-    FB.AppEvents.logPageView();   
+var token = '';
+var pagetoken = '';
 
-    FB.getLoginStatus(function(response) {
-      statusChangeCallback(response);
-    });
-  };
+window.fbAsyncInit = function() {
+  FB.init({
+    appId      : '1945705892381778',
+    cookie     : true,
+    xfbml      : true,
+    version    : 'v2.8'
+  });
+  FB.AppEvents.logPageView();   
 
-  (function(d, s, id){
-     var js, fjs = d.getElementsByTagName(s)[0];
-     if (d.getElementById(id)) {return;}
-     js = d.createElement(s); js.id = id;
-     js.src = "//connect.facebook.net/en_US/sdk.js";
-     fjs.parentNode.insertBefore(js, fjs);
-   }(document, 'script', 'facebook-jssdk'));
+  FB.getLoginStatus(function(response) {
+    // statusChangeCallback(response);
+  });
+};
+
+(function(d, s, id){
+    var js, fjs = d.getElementsByTagName(s)[0];
+    if (d.getElementById(id)) {return;}
+    js = d.createElement(s); js.id = id;
+    js.src = "//connect.facebook.net/en_US/sdk.js";
+    fjs.parentNode.insertBefore(js, fjs);
+  }(document, 'script', 'facebook-jssdk'));
 
 function statusChangeCallback(res) {
   console.log(res);
+  if (res.status === 'connected') {
+    token = res.authResponse.accessToken;
+    getLongLiveToken(token);
+  }
 }
+function getAccountPages() {
+  axios.get('https://graph.facebook.com/me/accounts', {
+    params: {
+      access_token: token
+    }
+  })
+  .then(function (response) {
+    console.log(response);
+    console.log(response.data.data);
+    pagetoken = response.data.data[0].access_token;
+  })
+}
+// 先取得long live的personal token之後，再用這個token去取得的page token就會是沒有期限的
+function getLongLiveToken(t) {
+  axios({
+    method: 'post',
+    url: '/chatbot/exchangetoken',
+    data: {
+      token: t
+    }
+  })
+  .then(function (response) {
+    token = response.data.access_token;
+    console.log(response);
+    getAccountPages();
+  })
+}
+
 function checkLoginState() {
   FB.getLoginStatus(function(response) {
     statusChangeCallback(response);
   });
 }
 </script>
+
+</html>

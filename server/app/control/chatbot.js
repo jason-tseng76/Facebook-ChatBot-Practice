@@ -23,17 +23,28 @@ fn.webhook_post = (req, res) => {
     data.entry.forEach((entry) => {
       const pageID = entry.id;
       const timeOfEvent = entry.time;
-
-      // Iterate over each messaging event
-      entry.messaging.forEach((event) => {
-        if (event.message) {
-          fn.receivedMessage(event);
-        } else if (event.postback) {
-          fn.receivedPostback(event);
-        } else {
-          console.log('Webhook received unknown event: ', event);
-        }
-      });
+      if (entry.messaging) {
+        // Iterate over each messaging event
+        entry.messaging.forEach((event) => {
+          if (event.message) {
+            fn.receivedMessage(event);
+          } else if (event.postback) {
+            fn.receivedPostback(event);
+          } else {
+            console.log('Webhook received unknown event: ', event);
+          }
+        });
+      }
+      if (entry.changes) {
+        entry.changes.forEach((d) => {
+          console.log(d);
+          if (d.field === 'feed' && d.value.item === 'comment') {
+            fn.sendPrivateReply(d.value.comment_id, d.value.sender_name, d.value.message);
+            // fn.sendTextMessage(d.value.sender_id, d.value.message);
+          }
+        });
+        // fn.getFeed(pageID);
+      }
     });
 
     // Assume all went well.
@@ -159,6 +170,45 @@ fn.sendGenericMessage = (recipientId) => {
   fn.callSendAPI(messageData);
 };
 
+fn.getFeed = (pageid) => {
+  request({
+    uri: `https://graph.facebook.com/v2.10/${pageid}}/conversations`,
+    qs: { access_token: global.config.FB_PAGE_TOKEN },
+    method: 'GET',
+    // json: {
+    //   access_token: global.config.FB_PAGE_TOKEN,
+    //   message: 'Hello Fan!',
+    // },
+  }, (error, response, body) => {
+    if (!error && response.statusCode === 200) {
+      console.log(body);
+    } else {
+      // console.error('Unable to send message.');
+      console.error(response.body);
+    }
+  });
+};
+
+// fn.callSendAPIByFeed = (id) => {
+//   request({
+//     uri: `https://graph.facebook.com/v2.6/${id}/messages`,
+//     qs: { access_token: global.config.FB_PAGE_TOKEN },
+//     method: 'POST',
+//     json: {
+//       access_token: global.config.FB_PAGE_TOKEN,
+//       message: 'Hello Fan!',
+//     },
+//   }, (error, response, body) => {
+//     if (!error && response.statusCode === 200) {
+//       console.log('Successfully Hello');
+//       console.log(body);
+//     } else {
+//       console.error('Unable to send message.');
+//       console.error(response.body);
+//     }
+//   });
+// };
+
 fn.callSendAPI = (messageData) => {
   request({
     uri: 'https://graph.facebook.com/v2.6/me/messages',
@@ -175,9 +225,259 @@ fn.callSendAPI = (messageData) => {
         messageId, recipientId);
     } else {
       console.error('Unable to send message.');
-      // console.error(response);
+      console.error(response.body);
       console.error(error);
     }
+  });
+};
+
+fn.sendPrivateReply = (cid, senderName, comment) => {
+  // request({
+  //   uri: `https://graph.facebook.com/v2.10/${cid}`,
+  //   qs: { access_token: global.config.FB_PAGE_TOKEN },
+  //   method: 'GET',
+  // }, (error, response, body) => {
+  //   if (!error && response.statusCode === 200) {
+  //     console.log(body);
+  //   } else {
+  //     console.error(error);
+  //   }
+  // });
+  request({
+    uri: `https://graph.facebook.com/v2.6/${cid}/private_replies`,
+    qs: { access_token: global.config.FB_PAGE_TOKEN },
+    method: 'POST',
+    json: { message: `yes, ${senderName}, you said:'${comment}'` },
+  }, (error, response, body) => {
+    if (!error && response.statusCode === 200) {
+      console.log(body);
+    } else {
+      console.error('Unable to send message.');
+      console.error(response.body);
+      console.error(error);
+    }
+  });
+};
+
+fn.qrcode = (req, res) => {
+  request({
+    uri: `https://graph.facebook.com/v2.6/me/messenger_codes?access_token=${global.config.FB_PAGE_TOKEN}`,
+    method: 'POST',
+    json: {
+      type: 'standard',
+      data: {
+        ref: 'from_qrcode', // ref不可以有空白
+      },
+      image_size: 1000,
+    },
+  }, (error, response, body) => {
+    res.send(body);
+  });
+};
+
+fn.subscriptions_add = (req, res) => {
+  request({
+    uri: 'https://graph.facebook.com/v2.6/me/subscribed_apps',
+    qs: {
+      access_token: global.config.FB_PAGE_TOKEN,
+    },
+    method: 'POST',
+  }, (error, response, body) => {
+    res.send(body);
+  });
+};
+fn.subscriptions_del = (req, res) => {
+  request({
+    uri: 'https://graph.facebook.com/v2.6/me/subscribed_apps',
+    qs: {
+      access_token: global.config.FB_PAGE_TOKEN,
+    },
+    method: 'DELETE',
+  }, (error, response, body) => {
+    res.send(body);
+  });
+};
+
+fn.persistentMenu_get = (req, res) => {
+  request({
+    uri: 'https://graph.facebook.com/v2.6/me/messenger_profile',
+    qs: {
+      access_token: global.config.FB_PAGE_TOKEN,
+      fields: 'persistent_menu',
+    },
+    method: 'GET',
+  }, (error, response, body) => {
+    res.send(body);
+  });
+};
+fn.persistentMenu_add = (req, res) => {
+  const menuobj = {
+    persistent_menu: [
+      {
+        locale: 'default',
+        composer_input_disabled: false,
+        call_to_actions: [
+          {
+            title: '帳戶',
+            type: 'nested',
+            call_to_actions: [
+              {
+                title: 'Pay Bill',
+                type: 'postback',
+                payload: 'PAYBILL_PAYLOAD',
+              },
+              {
+                title: 'History',
+                type: 'postback',
+                payload: 'HISTORY_PAYLOAD',
+              },
+              {
+                title: 'Contact Info',
+                type: 'postback',
+                payload: 'CONTACT_INFO_PAYLOAD',
+              },
+            ],
+          },
+          {
+            type: 'web_url',
+            title: 'Latest News',
+            url: 'http://petershats.parseapp.com/hat-news',
+            webview_height_ratio: 'full',
+          },
+        ],
+      },
+      // {
+      //   locale: 'zh_CN',
+      //   composer_input_disabled: false,
+      // },
+    ],
+  };
+  request({
+    uri: 'https://graph.facebook.com/v2.6/me/messenger_profile',
+    qs: { access_token: global.config.FB_PAGE_TOKEN },
+    method: 'POST',
+    json: menuobj,
+  }, (error, response, body) => {
+    res.send(body);
+  });
+};
+fn.persistentMenu_del = (req, res) => {
+  request({
+    uri: 'https://graph.facebook.com/v2.6/me/messenger_profile',
+    qs: {
+      access_token: global.config.FB_PAGE_TOKEN,
+    },
+    json: {
+      fields: ['persistent_menu'],
+    },
+    method: 'DELETE',
+  }, (error, response, body) => {
+    res.send(body);
+  });
+};
+
+fn.startbtn_add = (req, res) => {
+  request({
+    uri: 'https://graph.facebook.com/v2.6/me/messenger_profile',
+    qs: { access_token: global.config.FB_PAGE_TOKEN },
+    method: 'POST',
+    json: {
+      get_started: {
+        payload: 'GET START',
+      },
+    },
+  }, (error, response, body) => {
+    res.send(body);
+  });
+};
+
+fn.startbtn_get = (req, res) => {
+  request({
+    uri: 'https://graph.facebook.com/v2.6/me/messenger_profile',
+    qs: {
+      access_token: global.config.FB_PAGE_TOKEN,
+      fields: 'get_started',
+    },
+    method: 'GET',
+  }, (error, response, body) => {
+    // console.log(response);
+    // console.log(body);
+    // res.sendStatus(200);
+    res.send(body);
+  });
+};
+
+fn.startbtn_del = (req, res) => {
+  request({
+    uri: 'https://graph.facebook.com/v2.6/me/messenger_profile',
+    qs: {
+      access_token: global.config.FB_PAGE_TOKEN,
+    },
+    json: {
+      fields: ['get_started'],
+    },
+    method: 'DELETE',
+  }, (error, response, body) => {
+    res.send(body);
+  });
+};
+
+fn.greeting_add = (req, res) => {
+  request({
+    uri: 'https://graph.facebook.com/v2.6/me/messenger_profile',
+    qs: { access_token: global.config.FB_PAGE_TOKEN },
+    method: 'POST',
+    json: {
+      greeting: [{
+        locale: 'default',
+        text: 'Yo {{user_full_name}}!',
+      }],
+    },
+  }, (error, response, body) => {
+    res.send(body);
+  });
+};
+
+fn.greeting_get = (req, res) => {
+  request({
+    uri: 'https://graph.facebook.com/v2.6/me/messenger_profile',
+    qs: {
+      access_token: global.config.FB_PAGE_TOKEN,
+      fields: 'greeting',
+    },
+    method: 'GET',
+  }, (error, response, body) => {
+    res.send(body);
+  });
+};
+
+fn.greeting_del = (req, res) => {
+  request({
+    uri: 'https://graph.facebook.com/v2.6/me/messenger_profile',
+    qs: { access_token: global.config.FB_PAGE_TOKEN },
+    json: {
+      fields: ['greeting'],
+    },
+    method: 'DELETE',
+  }, (error, response, body) => {
+    res.send(body);
+  });
+};
+
+fn.exchangetoken = (req, res) => {
+  const token = req.body.token;
+  request({
+    uri: 'https://graph.facebook.com/v2.10/oauth/access_token',
+    qs: {
+      fb_exchange_token: token,
+      grant_type: 'fb_exchange_token',
+      client_id: global.config.FB_APP_ID,
+      client_secret: global.config.FB_APP_SECRET,
+    },
+    method: 'GET',
+  }, (error, response, body) => {
+    console.log(body);
+    res.send(body);
   });
 };
 
