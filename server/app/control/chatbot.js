@@ -17,14 +17,16 @@ fn.webhook_post = (req, res) => {
   console.log(req.body);
   const data = req.body;
 
-  // Make sure this is a page subscription
+  // 從資料格式先確定資料是屬於page的
   if (data.object === 'page') {
-    // Iterate over each entry - there may be multiple if batched
+    // Facebook是用批次的方式將資料傳入，所以data.entry是一個陣列，一次可能會有很多筆資料
     data.entry.forEach((entry) => {
+      // 粉絲頁的ID，如果Chatbot訂閱不止一個粉絲頁，就可以用這個值來做判斷
       const pageID = entry.id;
       const timeOfEvent = entry.time;
+      // 如果entry的內容有messaging，表示這是一個訊息(可能是使用者輸入的訊息或是我們定義好的按鈕訊息)
       if (entry.messaging) {
-        // Iterate over each messaging event
+        // 一樣，訊息會是陣列，有可能不止一筆
         entry.messaging.forEach((event) => {
           if (event.message) {
             fn.receivedMessage(event);
@@ -35,23 +37,21 @@ fn.webhook_post = (req, res) => {
           }
         });
       }
+      // 粉絲頁的feed有發生變化的事件
       if (entry.changes) {
         entry.changes.forEach((d) => {
           console.log(d);
+          // 確定是feed裡的comment發生了改變
+          // 是的話就回覆private reply
           if (d.field === 'feed' && d.value.item === 'comment') {
             fn.sendPrivateReply(d.value.comment_id, d.value.sender_name, d.value.message);
-            // fn.sendTextMessage(d.value.sender_id, d.value.message);
           }
         });
-        // fn.getFeed(pageID);
       }
     });
 
-    // Assume all went well.
-    //
-    // You must send back a 200, within 20 seconds, to let us know
-    // you've successfully received the callback. Otherwise, the request
-    // will time out and we will keep trying to resend.
+    // 無論如何，除非程式真的出錯，否則一定要在20秒之內回傳200，不然Facebook會認為這個webhook失效，
+    // 如果Facebook沒收到200，它會定期再次傳送，一但一段時間之後都沒收到200，就會把這個webhook給關掉。
     res.sendStatus(200);
   }
 };
@@ -63,31 +63,41 @@ fn.receivedMessage = (event) => {
   const timeOfMessage = event.timestamp;
   const message = event.message;
 
-  console.log('Received message for user %d and page %d at %d with message:',
-    senderID, recipientID, timeOfMessage);
+  console.log('Received message for user %d and page %d at %d with message:', senderID, recipientID, timeOfMessage);
   console.log(JSON.stringify(message));
 
   const messageId = message.mid;
-
-  const messageText = message.text;
+  let messageText = message.text;
   const messageAttachments = message.attachments;
+  const quick_reply = message.quick_reply;
 
   if (messageText) {
-    // If we receive a text message, check to see if it matches a keyword
-    // and send back the template example. Otherwise, just echo the text we received.
+    if (quick_reply) messageText += ` - ${message.quick_reply.payload}`;
     switch (messageText) {
-      case 'generic':
-        fn.sendGenericMessage(senderID);
+      case '電影':
+        fn.sendMovieMessage(senderID);
         break;
-
+      case '顏色':
+        fn.sendColorMessage(senderID);
+        break;
+      case '地點':
+        fn.sendLocationMessage(senderID);
+        break;
       default:
         fn.sendTextMessage(senderID, messageText);
     }
   } else if (messageAttachments) {
-    fn.sendTextMessage(senderID, 'Message with attachment received');
+    messageAttachments.forEach((ele) => {
+      if (ele.type === 'location') {
+        fn.sendTextMessage(senderID, `你的位置是：${JSON.stringify(ele.payload.coordinates)}`);
+      } else {
+        fn.sendTextMessage(senderID, `Message with attachment received - type=${ele.type}`);
+      }
+    });
   }
 };
 
+// 處理Postback事件
 fn.receivedPostback = (event) => {
   const senderID = event.sender.id;
   const recipientID = event.recipient.id;
@@ -102,12 +112,10 @@ fn.receivedPostback = (event) => {
 
   // When a postback is called, we'll send a message back to the sender to
   // let them know it was successful
-  fn.sendTextMessage(senderID, 'Postback called');
+  fn.sendTextMessage(senderID, `Postback called : ${payload}`);
 };
 
-// ////////////////////////
-// Sending helpers
-// ////////////////////////
+// 傳送純文字訊息
 fn.sendTextMessage = (recipientId, messageText) => {
   const messageData = {
     recipient: {
@@ -123,7 +131,8 @@ fn.sendTextMessage = (recipientId, messageText) => {
   fn.callSendAPI(messageData);
 };
 
-fn.sendGenericMessage = (recipientId) => {
+// 傳送圖文訊息+Button
+fn.sendMovieMessage = (recipientId) => {
   const messageData = {
     recipient: {
       id: recipientId,
@@ -133,82 +142,92 @@ fn.sendGenericMessage = (recipientId) => {
         type: 'template',
         payload: {
           template_type: 'generic',
-          elements: [{
-            title: 'rift',
-            subtitle: 'Next-generation virtual reality',
-            item_url: 'https://www.oculus.com/en-us/rift/',
-            image_url: 'http://messengerdemo.parseapp.com/img/rift.png',
-            buttons: [{
-              type: 'web_url',
-              url: 'https://www.oculus.com/en-us/rift/',
-              title: 'Open Web URL',
-            }, {
-              type: 'postback',
-              title: 'Call Postback',
-              payload: 'Payload for first bubble',
-            }],
-          }, {
-            title: 'touch',
-            subtitle: 'Your Hands, Now in VR',
-            item_url: 'https://www.oculus.com/en-us/touch/',
-            image_url: 'http://messengerdemo.parseapp.com/img/touch.png',
-            buttons: [{
-              type: 'web_url',
-              url: 'https://www.oculus.com/en-us/touch/',
-              title: 'Open Web URL',
-            }, {
-              type: 'postback',
-              title: 'Call Postback',
-              payload: 'Payload for second bubble',
-            }],
-          }],
+          image_aspect_ratio: 'square',
+          elements: [
+            {
+              title: '不幹了！我開除了黑心公司',
+              subtitle: 'To Each His Own',
+              // item_url: 'http://www.ambassador.com.tw/movie_review.html?movieid=90904268-05f5-41fe-8a0c-a5917cf33b71',
+              image_url: 'http://www.ambassador.com.tw/assets/img/movies/ToEachHisOwn_180x270_Poster.jpg',
+              buttons: [{
+                type: 'web_url',
+                url: 'http://www.ambassador.com.tw/movie_review.html?movieid=90904268-05f5-41fe-8a0c-a5917cf33b71',
+                title: 'Open Web URL',
+              }, {
+                type: 'postback',
+                title: '加入待看清單',
+                payload: 'Add-Movie1',
+              }],
+            },
+            {
+              title: '電影版妖怪手錶：飛天巨鯨與兩個世界的大冒險喵！',
+              subtitle: 'YO-KAI WATCH The Movie: A Whale of Two Worlds',
+              item_url: 'http://www.ambassador.com.tw/movie_review.html?movieid=7e79de57-fc0c-4a48-93c8-df3d485451d7',
+              image_url: 'http://www.ambassador.com.tw/assets/img/movies/YOKAIWATCHTheMovieAWhaleofTwoWorlds_180x270_Poster.jpg',
+              buttons: [{
+                type: 'web_url',
+                url: 'http://www.ambassador.com.tw/movie_review.html?movieid=7e79de57-fc0c-4a48-93c8-df3d485451d7',
+                title: 'Open Web URL',
+              }, {
+                type: 'postback',
+                title: '加入待看清單',
+                payload: 'Add-Movie2',
+              }],
+            },
+          ],
         },
       },
     },
   };
-
   fn.callSendAPI(messageData);
 };
 
-fn.getFeed = (pageid) => {
-  request({
-    uri: `https://graph.facebook.com/v2.10/${pageid}}/conversations`,
-    qs: { access_token: global.config.FB_PAGE_TOKEN },
-    method: 'GET',
-    // json: {
-    //   access_token: global.config.FB_PAGE_TOKEN,
-    //   message: 'Hello Fan!',
-    // },
-  }, (error, response, body) => {
-    if (!error && response.statusCode === 200) {
-      console.log(body);
-    } else {
-      // console.error('Unable to send message.');
-      console.error(response.body);
-    }
-  });
+// 傳送quick_replies
+fn.sendColorMessage = (recipientId) => {
+  const messageData = {
+    recipient: {
+      id: recipientId,
+    },
+    message: {
+      text: 'Pick a color:',
+      quick_replies: [
+        {
+          content_type: 'text',
+          title: 'Red',
+          payload: 'DEVELOPER_DEFINED_PAYLOAD_FOR_PICKING_RED',
+          image_url: 'https://image.freepik.com/free-vector/red-geometrical-background_1085-125.jpg',
+        },
+        {
+          content_type: 'text',
+          title: 'Green',
+          payload: 'DEVELOPER_DEFINED_PAYLOAD_FOR_PICKING_GREEN',
+          // "image_url":"http://petersfantastichats.com/img/green.png"
+        },
+      ],
+    },
+  };
+  fn.callSendAPI(messageData);
 };
 
-// fn.callSendAPIByFeed = (id) => {
-//   request({
-//     uri: `https://graph.facebook.com/v2.6/${id}/messages`,
-//     qs: { access_token: global.config.FB_PAGE_TOKEN },
-//     method: 'POST',
-//     json: {
-//       access_token: global.config.FB_PAGE_TOKEN,
-//       message: 'Hello Fan!',
-//     },
-//   }, (error, response, body) => {
-//     if (!error && response.statusCode === 200) {
-//       console.log('Successfully Hello');
-//       console.log(body);
-//     } else {
-//       console.error('Unable to send message.');
-//       console.error(response.body);
-//     }
-//   });
-// };
+// 傳送quick_replies的位置資訊
+fn.sendLocationMessage = (recipientId) => {
+  const messageData = {
+    recipient: {
+      id: recipientId,
+    },
+    message: {
+      text: '告訴我你在哪裡',
+      quick_replies: [
+        {
+          content_type: 'location',
+        },
+      ],
+    },
+  };
+  fn.callSendAPI(messageData);
+};
 
+// 把訊息送出去給FB
 fn.callSendAPI = (messageData) => {
   request({
     uri: 'https://graph.facebook.com/v2.6/me/messages',
@@ -231,18 +250,8 @@ fn.callSendAPI = (messageData) => {
   });
 };
 
+// 回覆私人訊息
 fn.sendPrivateReply = (cid, senderName, comment) => {
-  // request({
-  //   uri: `https://graph.facebook.com/v2.10/${cid}`,
-  //   qs: { access_token: global.config.FB_PAGE_TOKEN },
-  //   method: 'GET',
-  // }, (error, response, body) => {
-  //   if (!error && response.statusCode === 200) {
-  //     console.log(body);
-  //   } else {
-  //     console.error(error);
-  //   }
-  // });
   request({
     uri: `https://graph.facebook.com/v2.6/${cid}/private_replies`,
     qs: { access_token: global.config.FB_PAGE_TOKEN },
@@ -256,22 +265,6 @@ fn.sendPrivateReply = (cid, senderName, comment) => {
       console.error(response.body);
       console.error(error);
     }
-  });
-};
-
-fn.qrcode = (req, res) => {
-  request({
-    uri: `https://graph.facebook.com/v2.6/me/messenger_codes?access_token=${global.config.FB_PAGE_TOKEN}`,
-    method: 'POST',
-    json: {
-      type: 'standard',
-      data: {
-        ref: 'from_qrcode', // ref不可以有空白
-      },
-      image_size: 1000,
-    },
-  }, (error, response, body) => {
-    res.send(body);
   });
 };
 

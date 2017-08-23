@@ -17,19 +17,19 @@ module.exports = (app) => {
   router.get('/get_greeting', chatbot.greeting_get);
   router.get('/del_greeting', chatbot.greeting_del);
 
+  // 常駐選單
   router.get('/add_persistentMenu', chatbot.persistentMenu_add);
   router.get('/get_persistentMenu', chatbot.persistentMenu_get);
   router.get('/del_persistentMenu', chatbot.persistentMenu_del);
 
+  // 粉絲團的訂閱
   router.get('/add_subscriptions', chatbot.subscriptions_add);
   router.get('/del_subscriptions', chatbot.subscriptions_del);
 
-  router.get('/qrcode', chatbot.qrcode);
+  // router.get('/qrcode', chatbot.qrcode);
 
+  // 取得長期的page token
   router.post('/exchangetoken', chatbot.exchangetoken);
-
-  // router.post('/uploadBase64', upload.uploadBase64);
-  // router.post('/uploadeditor', upload.uploadeditor);
 
   app.use('/chatbot', router);
 };
